@@ -10,6 +10,7 @@ import (
 	"github.com/kris-nova/logger"
 	"github.com/pkg/errors"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	awseks "github.com/aws/aws-sdk-go/service/eks"
 
@@ -228,18 +229,42 @@ func (c *ClusterProvider) WaitForControlPlane(id *api.ClusterMeta, clientSet *ku
 	}
 }
 
+func (c *ClusterProvider) UpdateClusterConfigForLogging(cfg *api.ClusterConfig) error {
+	if len(cfg.EnableLogging) == 0 {
+		return nil
+	}
+	input := &awseks.UpdateClusterConfigInput{
+		Name: &cfg.Metadata.Name,
+		Logging: &awseks.Logging{
+			ClusterLogging: []*awseks.LogSetup{{
+				Enabled: aws.Bool(true),
+				Types:   aws.StringSlice(cfg.EnableLogging),
+			}},
+		},
+	}
+	output, err := c.Provider.EKS().UpdateClusterConfig(input)
+	if err != nil {
+		return err
+	}
+	if err := c.waitForUpdateToSucceed(cfg.Metadata.Name, output.Update); err != nil {
+		return err
+	}
+	logger.Info("enabled cluster logging for %v", cfg.EnableLogging)
+	return nil
+}
+
 // UpdateClusterVersion calls eks.UpdateClusterVersion and updates to cfg.Metadata.Version,
 // it will return update ID along with an error (if it occurrs)
-func (c *ClusterProvider) UpdateClusterVersion(cfg *api.ClusterConfig) (string, error) {
+func (c *ClusterProvider) UpdateClusterVersion(cfg *api.ClusterConfig) (*awseks.Update, error) {
 	input := &awseks.UpdateClusterVersionInput{
 		Name:    &cfg.Metadata.Name,
 		Version: &cfg.Metadata.Version,
 	}
 	output, err := c.Provider.EKS().UpdateClusterVersion(input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return *output.Update.Id, nil
+	return output.Update, nil
 }
 
 // UpdateClusterVersionBlocking calls UpdateClusterVersion and blocks until update
@@ -250,16 +275,18 @@ func (c *ClusterProvider) UpdateClusterVersionBlocking(cfg *api.ClusterConfig) e
 		return err
 	}
 
+	return c.waitForUpdateToSucceed(cfg.Metadata.Name, id)
+}
+
+func (c *ClusterProvider) waitForUpdateToSucceed(clusterName string, update *awseks.Update) error {
 	newRequest := func() *request.Request {
 		input := &awseks.DescribeUpdateInput{
-			Name:     &cfg.Metadata.Name,
-			UpdateId: &id,
+			Name:     &clusterName,
+			UpdateId: update.Id,
 		}
 		req, _ := c.Provider.EKS().DescribeUpdateRequest(input)
 		return req
 	}
-
-	msg := fmt.Sprintf("waiting for control plane %q version update", cfg.Metadata.Name)
 
 	acceptors := waiters.MakeAcceptors(
 		"Update.Status",
@@ -270,7 +297,9 @@ func (c *ClusterProvider) UpdateClusterVersionBlocking(cfg *api.ClusterConfig) e
 		},
 	)
 
-	return waiters.Wait(cfg.Metadata.Name, msg, acceptors, newRequest, c.Provider.WaitTimeout(), nil)
+	msg := fmt.Sprintf("waiting for requested %q in cluster %q to succeed", *update.Type, clusterName)
+
+	return waiters.Wait(clusterName, msg, acceptors, newRequest, c.Provider.WaitTimeout(), nil)
 }
 
 func addSummaryTableColumns(printer *printers.TablePrinter) {

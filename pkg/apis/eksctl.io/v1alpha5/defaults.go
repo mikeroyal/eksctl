@@ -1,5 +1,16 @@
 package v1alpha5
 
+func SetClusterConfigDefaults(cfg *ClusterConfig) error {
+	logAll := []string{"api", "audit", "authenticator", "controllerManager", "scheduler"}
+	if len(cfg.EnableLogging) == 1 {
+		switch cfg.EnableLogging[0] {
+		case "all", "*":
+			cfg.EnableLogging = logAll
+		}
+	}
+	return nil
+}
+
 // SetNodeGroupDefaults will set defaults for a given nodegroup
 func SetNodeGroupDefaults(_ int, ng *NodeGroup) error {
 	if ng.InstanceType == "" {

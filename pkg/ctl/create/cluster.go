@@ -104,6 +104,10 @@ func doCreateCluster(p *api.ProviderConfig, cfg *api.ClusterConfig, nameArg stri
 		return err
 	}
 
+	if err := api.SetClusterConfigDefaults(cfg); err != nil {
+		return err
+	}
+
 	if err := ngFilter.ValidateNodeGroupsAndSetDefaults(cfg.NodeGroups); err != nil {
 		return err
 	}
@@ -323,6 +327,10 @@ func doCreateCluster(p *api.ProviderConfig, cfg *api.ClusterConfig, nameArg stri
 			logger.Success("saved kubeconfig as %q", kubeconfigPath)
 		} else {
 			kubeconfigPath = ""
+		}
+
+		if err := ctl.UpdateClusterConfigForLogging(cfg); err != nil {
+			return err
 		}
 
 		// create Kubernetes client
