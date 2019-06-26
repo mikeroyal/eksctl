@@ -31,3 +31,9 @@ integration/kubeconfig-*
 
 # Generated header file
 .license-header
+
+# Snaps
+eksctl_*_*.snap
+parts
+prime
+stage

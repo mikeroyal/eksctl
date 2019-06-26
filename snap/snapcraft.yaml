@@ -1,0 +1,40 @@
+name: eksctl
+version-script: |
+  EKSCTL_TAG="$(git tag -l | egrep -v '^(latest_release)' | sort --version-sort | tail -n1)"
+  if [ "$SNAPCRAFT_PROJECT_GRADE" = "stable" ]
+  then
+    echo "$EKSCTL_TAG"
+  else
+    GIT_REV="$(git rev-parse --short HEAD)"
+    echo "$EKSCTL_TAG+$GIT_REV"
+  fi
+version: git
+summary: a CLI for Amazon EKS
+description: |
+  eksctl is a simple CLI tool for creating clusters on EKS - Amazon's new
+  managed Kubernetes service for EC2. It is written in Go, and uses
+  CloudFormation.
+  .
+  You can create a cluster in minutes with just one command -
+  eksctl create cluster!
+grade: devel
+confinement: strict
+base: core18
+
+apps:
+  eksctl:
+    command: eksctl
+    plugs:
+      - network
+
+parts:
+  eksctl:
+    source: .
+    plugin: make
+    make-parameters: [ build ]
+    artifacts: [ eksctl ]
+    override-pull: |
+      snapcraftctl pull
+      make install-build-deps
+    build-snaps:
+      - go
